@@ -133,7 +133,7 @@ nicht_bebaubar_tmp AS (
 ),
 -- Dissolve (GIS Union) aller nicht bebaubaren Flächen
 nicht_bebaubar AS (
-  SELECT ST_Union(geometrie,0.001) AS geometrie FROM nicht_bebaubar_tmp
+  SELECT ST_CollectionExtract(ST_Union(geometrie,0.001),3) AS geometrie FROM nicht_bebaubar_tmp
 ),
 -- Calculate Difference between Nutzungszonen Siedlungsgebiet and bebaubaren Flächen, Dump them to individual polygons
 bebaubar_tmp AS (

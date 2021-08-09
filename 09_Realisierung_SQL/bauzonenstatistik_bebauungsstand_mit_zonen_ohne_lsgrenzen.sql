@@ -118,7 +118,7 @@ nicht_bebaubar_tmp AS (
 ),
 -- Dissolve (GIS Union) aller nicht bebaubaren Flächen
 nicht_bebaubar AS (
-  SELECT ST_Union(geometrie,0.001) AS geometrie FROM nicht_bebaubar_tmp
+  SELECT ST_CollectionExtract(ST_Union(geometrie,0.001),3) AS geometrie FROM nicht_bebaubar_tmp
 ),
 -- Calculate Difference between Nutzungszonen Siedlungsgebiet and bebaubaren Flächen, Dump them to individual polygons
 bebaubar_tmp AS (
@@ -176,9 +176,9 @@ bebaut_final AS (
 ),
 -- union of bebaut_final and unbebaut_dissolved
 gesamt_final AS (
-	SELECT 'bebaut' AS bebauungsstand, ST_Multi((ST_Dump(bb.geometrie)).geom) AS geometrie FROM bebaut_final bb
-	UNION
-	SELECT 'unbebaut' AS bebauungsstand, ST_Multi((ST_Dump(ubb.geometrie)).geom) AS geometrie FROM unbebaut_dissolved ubb
+  SELECT 'bebaut' AS bebauungsstand, ST_Multi((ST_Dump(bb.geometrie)).geom) AS geometrie FROM bebaut_final bb
+    UNION
+  SELECT 'unbebaut' AS bebauungsstand, ST_Multi((ST_Dump(ubb.geometrie)).geom) AS geometrie FROM unbebaut_dissolved ubb
 )
 -- areas (m2) can only be calculated at the very end after the ST_Dump()
 -- also joining Nutzungszonen and Gemeinden
