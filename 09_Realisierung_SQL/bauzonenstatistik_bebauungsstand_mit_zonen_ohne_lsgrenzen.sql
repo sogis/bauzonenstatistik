@@ -163,28 +163,39 @@ unbebaut_dissolved AS (
 )
 ,
 -- final version of bebaute Flächen mit ST_Difference
-bebaut_final AS (
+bebaut_final_tmp AS (
   SELECT
     (ST_Dump(ST_Difference(nd.geometrie,unbb.geometrie,0.001))).geom AS geometrie
   FROM nutzzon_dissolved nd, unbebaut_dissolved unbb
 ),
+-- intersection with undissolved Nutzungszonen to get polygons that honor the Nutzungszonen
+bebaut_final AS (
+  SELECT ST_Intersection(bft.geometrie,nz.geometrie,0.001) AS geometrie
+    FROM bebaut_final_tmp bft, nutzzon nz
+    WHERE ST_Intersects(nz.geometrie,bft.geometrie)
+),
+-- union of bebaut_final and unbebaut_dissolved
 gesamt_final AS (
-	SELECT nz.typ_kt AS grundnutzung_typ_kt, 'bebaut' AS bebauungsstand, nz.bfs_nr, gem.gemeindename, ST_Multi((ST_Dump(bb.geometrie)).geom) AS geometrie FROM bebaut_final bb
-	  LEFT JOIN nutzzon nz ON ST_Intersects(ST_PointOnSurface(bb.geometrie),nz.geometrie)
-	  LEFT JOIN gem ON gem.bfs_gemeindenummer = nz.bfs_nr
+	SELECT 'bebaut' AS bebauungsstand, ST_Multi((ST_Dump(bb.geometrie)).geom) AS geometrie FROM bebaut_final bb
 	UNION
-	SELECT nz.typ_kt AS grundnutzung_typ_kt, 'unbebaut' AS bebauungsstand, nz.bfs_nr, gem.gemeindename, ST_Multi((ST_Dump(ubb.geometrie)).geom) AS geometrie FROM unbebaut_dissolved ubb
-	  LEFT JOIN nutzzon nz ON ST_Intersects(ST_PointOnSurface(ubb.geometrie),nz.geometrie)
-	  LEFT JOIN gem ON gem.bfs_gemeindenummer = nz.bfs_nr
-	 ORDER BY 1,2
+	SELECT 'unbebaut' AS bebauungsstand, ST_Multi((ST_Dump(ubb.geometrie)).geom) AS geometrie FROM unbebaut_dissolved ubb
 )
 -- areas (m2) can only be calculated at the very end after the ST_Dump()
+-- also joining Nutzungszonen and Gemeinden
 SELECT 
-  grundnutzung_typ_kt,
-  bebauungsstand,
-  bfs_nr,
-  gemeindename,
-  Round(ST_Area(geometrie)) AS flaeche,
-  geometrie
-FROM gesamt_final
+  nz.typ_kt AS grundnutzung_typ_kt,
+  f.bebauungsstand,
+  nz.bfs_nr,
+  gem.gemeindename,
+  Round(ST_Area(f.geometrie)) AS flaeche,
+  f.geometrie
+FROM gesamt_final f
+  LEFT JOIN nutzzon nz ON ST_Intersects(ST_PointOnSurface(f.geometrie),nz.geometrie)
+  LEFT JOIN gem ON gem.bfs_gemeindenummer = nz.bfs_nr
+ WHERE
+   f.geometrie IS NOT NULL
+   AND ST_IsValid(f.geometrie)
+   AND ST_GeometryType(f.geometrie) = 'ST_MultiPolygon'
+   AND Round(ST_Area(f.geometrie)) > 0
+ ORDER BY nz.bfs_nr, nz.typ_kt, f.bebauungsstand
 ;
