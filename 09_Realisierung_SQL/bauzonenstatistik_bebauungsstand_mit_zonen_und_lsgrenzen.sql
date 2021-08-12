@@ -51,7 +51,7 @@ eob AS (
   FROM agi_mopublic_pub.mopublic_einzelobjekt_flaeche
    WHERE
     bfs_nr = (SELECT nr FROM bfsnr)
-    AND art_txt IN ('Unter-stand','unterirdisches_Gebaeude','uebriger_Gebaeudeteil','Reservoir','Aussichtsturm','Bahnsteig')
+    AND art_txt IN ('Unterstand','unterirdisches_Gebaeude','uebriger_Gebaeudeteil','Reservoir','Aussichtsturm','Bahnsteig')
     AND ST_Area(geometrie) >= 25
 ),
 -- Liegenschaften
