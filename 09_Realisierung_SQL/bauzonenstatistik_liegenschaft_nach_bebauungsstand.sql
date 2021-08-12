@@ -1,7 +1,8 @@
 -- zuerst Tabelle leeren
 DELETE FROM
   arp_auswertung_nutzungsplanung_pub.bauzonenstatistik_liegenschaft_nach_bebauungsstand
- WHERE bfs_nr = 2457;
+ --WHERE bfs_nr = 2457
+;
 -- wieder befüllen
 INSERT INTO
   arp_auswertung_nutzungsplanung_pub.bauzonenstatistik_liegenschaft_nach_bebauungsstand
@@ -17,13 +18,12 @@ nutzzon AS (
       typ_code_kommunal < 2000
       AND typ_kt NOT IN ('N160_Gruen_und_Freihaltezone_innerhalb_Bauzone','N161_kommunale_Uferschutzzone_innerhalb_Bauzone','N169_weitere_eingeschraenkte_Bauzonen','N180_Verkehrszone_Stras-se','N181_Verkehrszone_Bahnareal','N182_Verkehrszone_Flugplatzareal','N189_weitere_Verkehrszonen')
 ),
--- unbebaute Flächen
+-- unbebaute Flächen Methode mit Liegenschaftsgrenzen
 unbeb_fl AS (
   SELECT
-    t_id,
     geometrie
   FROM
-    arp_auswertung_nutzungsplanung_pub.bauzonenstatistik_bebauungsstand_mit_zonen_ohne_lsgrenzen
+    arp_auswertung_nutzungsplanung_pub.bauzonenstatistik_bebauungsstand_mit_zonen_und_lsgrenzen
    WHERE
     bebauungsstand = 'unbebaut'
 ),
@@ -43,12 +43,29 @@ gr_tmp AS (
    LEFT JOIN nutzzon ON ST_Intersects(gru.geometrie, nutzzon.geometrie)
    LEFT JOIN agi_hoheitsgrenzen_pub.hoheitsgrenzen_gemeindegrenze gem ON gru.bfs_nr = gem.bfs_gemeindenummer
     WHERE
-     gru.bfs_nr = 2457 AND
+     --gru.bfs_nr = 2457 AND
      gru.art_txt = 'Liegenschaft'
      AND nutzzon.typ_kt IS NOT NULL
     GROUP BY gru.t_id, gru.t_ili_tid, gru.egrid, gru.nummer, gru.bfs_nr, gru.flaechenmass, gru.geometrie, gem.gemeindename
 ),
-gr AS (
+-- bebaute Flächen Input
+bebaut_fl_input AS (
+  -- Gebäude aus Bodenbedeckung
+  SELECT geometrie, bfs_nr FROM agi_mopublic_pub.mopublic_bodenbedeckung WHERE art_txt = 'Gebaeude' AND ST_Area(geometrie) >= 25
+  UNION
+  -- projektierte Gebäude aus Bodenbedeckung
+  SELECT geometrie, bfs_nr FROM agi_mopublic_pub.mopublic_bodenbedeckung_proj WHERE art_txt = 'Gebaeude' AND ST_Area(geometrie) >= 25
+  UNION
+  -- Einzelobjekte Flächen
+  SELECT geometrie, bfs_nr FROM agi_mopublic_pub.mopublic_einzelobjekt_flaeche WHERE art_txt IN ('Unterstand','unterirdisches_Gebaeude','uebriger_Gebaeudeteil','Reservoir','Aussichtsturm','Bahnsteig') AND ST_Area(geometrie) >= 25
+),
+-- bebaute Flächen Merge per Gemeinde
+bebaut_fl AS (
+	SELECT ST_CollectionExtract(ST_Union(geometrie,0.001),3) AS geometrie FROM bebaut_fl_input GROUP BY bfs_nr
+)
+,
+-- Verknüpfung mit unbebauten Flächen aus Methode unter Berücksichtigung Liegenschaften und Nutzungszonen
+gr_tmp2 AS (
   SELECT
     gr.*,
     SUM(COALESCE(ST_Area(ST_Intersection(gr.geometrie,unbeb_fl.geometrie,0.001)),0))::NUMERIC AS flaeche_unbebaut,
@@ -60,6 +77,13 @@ gr AS (
    FROM gr_tmp gr
      LEFT JOIN unbeb_fl ON ST_Intersects(gr.geometrie, unbeb_fl.geometrie)
     GROUP BY gr.t_id, gr.t_ili_tid, gr.egris_egrid, gr.nummer, gr.bfs_nr, gr.grundnutzung_typ_kt, gr.flaeche, gr.geometrie, gr.gemeindename
+),
+gr AS (
+  SELECT
+    gr.*,
+    COALESCE(ST_Area(ST_Intersection(gr.geometrie,bebaut_fl.geometrie,0.001)),0)::NUMERIC AS flaeche_bebaut
+  FROM gr_tmp2 gr
+    LEFT JOIN bebaut_fl ON ST_Intersects(gr.geometrie, bebaut_fl.geometrie)
 )
 SELECT
    t_id,
@@ -74,10 +98,10 @@ SELECT
      WHEN flaeche_unbebaut = 0 THEN 'bebaut'
      ELSE
        CASE
-         WHEN flaeche_unbebaut / flaeche_beschnitten >= 0.55 AND flaeche_unbebaut >= 180 THEN 'unbebaut'
+         WHEN flaeche_bebaut < 25 AND flaeche_unbebaut >= 180 THEN 'unbebaut'
          ELSE
            CASE
-             WHEN flaeche_unbebaut / flaeche_beschnitten < 0.55 AND flaeche_unbebaut / flaeche_beschnitten > 0.10 AND flaeche_unbebaut >= 180 THEN 'teilweise_bebaut'
+             WHEN flaeche_bebaut >= 25 AND flaeche_unbebaut >= 180 THEN 'teilweise_bebaut'
              ELSE 'bebaut'
            END
        END
