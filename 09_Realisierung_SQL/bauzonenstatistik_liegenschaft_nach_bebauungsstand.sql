@@ -6,10 +6,12 @@
 -- wieder befüllen
 INSERT INTO
   arp_auswertung_nutzungsplanung_pub.bauzonenstatistik_liegenschaft_nach_bebauungsstand
+   (t_ili_tid, egris_egrid, nummer, bfs_nr, gemeindename, grundnutzung_typ_kt, bebauungsstand, flaeche, flaeche_beschnitten, flaeche_unbebaut, geometrieart_liegenschaft, geometrie)
+
 WITH
 bfsnr AS (
 	SELECT
-	  2401 AS nr
+	  2407 AS nr
      --Himmelried: 2618, Büsserach: 2614, Oensingen: 2407
 ),
 -- Nutzungszonen
@@ -42,7 +44,7 @@ gr_tmp AS (
    gru.nummer,
    gru.bfs_nr,
    gem.gemeindename,
-   array_to_string(array_agg(DISTINCT nutzzon.typ_kt ORDER BY nutzzon.typ_kt),',') AS grundnutzung_typ_kt,
+   nutzzon.typ_kt AS grundnutzung_typ_kt,
    gru.flaechenmass AS flaeche,
    ST_Multi(ST_CollectionExtract(ST_Intersection(gru.geometrie,ST_Union(nutzzon.geometrie,0.001),0.001),3)) AS geometrie
   FROM agi_mopublic_pub.mopublic_grundstueck gru
@@ -52,7 +54,7 @@ gr_tmp AS (
      gru.bfs_nr = (SELECT nr FROM bfsnr)
      AND gru.art_txt = 'Liegenschaft'
      AND nutzzon.typ_kt IS NOT NULL
-    GROUP BY gru.t_id, gru.t_ili_tid, gru.egrid, gru.nummer, gru.bfs_nr, gru.flaechenmass, gru.geometrie, gem.gemeindename
+    GROUP BY gru.t_id, gru.t_ili_tid, gru.egrid, gru.nummer, gru.bfs_nr, gru.flaechenmass, gru.geometrie, gem.gemeindename, nutzzon.typ_kt
 ),
 -- bebaute Flächen Input
 bebaut_fl AS (
@@ -92,32 +94,38 @@ gr AS (
      flaeche_unbebaut, geometrieart_liegenschaft, flaeche_beschnitten
 )
 SELECT
-   t_id,
-   t_ili_tid,
-   egris_egrid,
-   nummer,
-   bfs_nr,
-   gemeindename,
-   grundnutzung_typ_kt,
-   flaeche,
+   gr.t_ili_tid,
+   gr.egris_egrid,
+   gr.nummer,
+   gr.bfs_nr,
+   gr.gemeindename,
+   gr.grundnutzung_typ_kt,
    CASE
-     WHEN flaeche_unbebaut = 0 THEN 'bebaut'
+     WHEN gr.flaeche_unbebaut = 0 THEN 'bebaut'
+     -- Übersteuerung durch Punktlayer
+     WHEN COUNT(ueb.bebaut) > 0 THEN 'bebaut'
      ELSE
        CASE
-         WHEN flaeche_bebaut < 25 AND flaeche_unbebaut >= 180 THEN 'unbebaut'
+         WHEN gr.flaeche_bebaut < 25 AND gr.flaeche_unbebaut >= 180 THEN 'unbebaut'
          ELSE
            CASE
-             WHEN flaeche_bebaut >= 25 AND flaeche_unbebaut >= 180 THEN 'teilweise_bebaut'
+             WHEN gr.flaeche_bebaut >= 25 AND gr.flaeche_unbebaut >= 180 THEN 'teilweise_bebaut'
              ELSE 'bebaut'
            END
        END
    END AS bebauungsstand,
-   geometrie,
-   geometrieart_liegenschaft,
-   flaeche_beschnitten,
-   flaeche_unbebaut
+   gr.flaeche,
+   gr.flaeche_beschnitten,
+   gr.flaeche_unbebaut,
+   gr.geometrieart_liegenschaft,
+   gr.geometrie
  FROM gr
+   LEFT JOIN arp_auswertung_nutzungsplanung_pub.bauzonenstatistik_uebersteuerung_bebauungsstand ueb
+     ON ST_Intersects(ueb.geometrie,gr.geometrie) AND ueb.bebaut IS TRUE
    -- um Artefakte wegzufiltern
    -- ev Wert verkleinern
-   WHERE flaeche_beschnitten > 10
+   WHERE gr.flaeche_beschnitten > 10
+   GROUP BY
+     gr.t_ili_tid, gr.egris_egrid, gr.nummer, gr.bfs_nr, gr.gemeindename, gr.grundnutzung_typ_kt,
+     gr.flaeche, gr.flaeche_bebaut, gr.flaeche_beschnitten, gr.flaeche_unbebaut, gr.geometrieart_liegenschaft, gr.geometrie
 ;
