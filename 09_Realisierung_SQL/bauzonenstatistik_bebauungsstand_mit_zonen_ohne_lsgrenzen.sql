@@ -1,4 +1,6 @@
-DELETE FROM arp_auswertung_nutzungsplanung_pub.bauzonenstatistik_bebauungsstand_mit_zonen_ohne_lsgrenzen WHERE bfs_nr = 2618;
+--DELETE FROM arp_auswertung_nutzungsplanung_pub.bauzonenstatistik_bebauungsstand_mit_zonen_ohne_lsgrenzen
+  --WHERE bfs_nr = 2618
+--;
 INSERT
   INTO arp_auswertung_nutzungsplanung_pub.bauzonenstatistik_bebauungsstand_mit_zonen_ohne_lsgrenzen
    (grundnutzung_typ_kt,bebauungsstand,bfs_nr,gemeindename,flaeche,geometrie)
@@ -7,7 +9,7 @@ INSERT
 -- TODO: muss in Gradle als Variable übernommen werden
 WITH bfsnr AS (
 	SELECT
-	  2618 AS nr
+	  2401 AS nr
      --Himmelried: 2618, Büsserach: 2614, Oensingen: 2407
 ),
 -- Gemeindegeometrie
@@ -32,7 +34,7 @@ geb AS (
     art_txt = 'Gebaeude'
     AND bfs_nr = (SELECT nr FROM bfsnr)
     AND ST_Area(geometrie) >= 25 --kleinere Gebäude werden ignoriert (gelten als abbrechbar)
- UNION
+ UNION ALL
   SELECT
     --positive buffer of 12m and then negative buffer of 6m
     --special buffer parameters 
@@ -109,11 +111,11 @@ verkfl AS (
 --TODO: test if intersection would be faster if done after the  ST_Union() step below
 nicht_bebaubar_tmp AS (
   SELECT ST_Intersection(geb.geometrie,nd.geometrie,0.001) AS geometrie FROM geb, nutzzon_dissolved nd WHERE ST_Intersects(geb.geometrie,nd.geometrie)
-  UNION
+  UNION ALL
   SELECT ST_Intersection(eob.geometrie,nd.geometrie,0.001) AS geometrie FROM eob, nutzzon_dissolved nd WHERE ST_Intersects(eob.geometrie,nd.geometrie)
-  UNION
+  UNION ALL
   SELECT ST_Intersection(verkfl.geometrie,nd.geometrie,0.001) AS geometrie FROM verkfl, nutzzon_dissolved nd WHERE ST_Intersects(verkfl.geometrie,nd.geometrie)
-  UNION
+  UNION ALL
   SELECT geom_buff AS geometrie FROM nutzzon
 ),
 -- Dissolve (GIS Union) aller nicht bebaubaren Flächen
@@ -177,7 +179,7 @@ bebaut_final AS (
 -- union of bebaut_final and unbebaut_dissolved
 gesamt_final AS (
   SELECT 'bebaut' AS bebauungsstand, ST_Multi((ST_Dump(bb.geometrie)).geom) AS geometrie FROM bebaut_final bb
-    UNION
+    UNION ALL
   SELECT 'unbebaut' AS bebauungsstand, ST_Multi((ST_Dump(ubb.geometrie)).geom) AS geometrie FROM unbebaut_dissolved ubb
 )
 -- areas (m2) can only be calculated at the very end after the ST_Dump()
