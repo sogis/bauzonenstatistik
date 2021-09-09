@@ -11,7 +11,7 @@ INSERT INTO
 WITH
 bfsnr AS (
 	SELECT
-	  2407 AS nr
+	  2614 AS nr
      --Himmelried: 2618, Büsserach: 2614, Oensingen: 2407
 ),
 -- Nutzungszonen
@@ -124,7 +124,7 @@ SELECT
      ON ST_Intersects(ueb.geometrie,gr.geometrie) AND ueb.bebaut IS TRUE
    -- um Artefakte wegzufiltern
    -- ev Wert verkleinern
-   WHERE gr.flaeche_beschnitten > 10
+   WHERE gr.flaeche_beschnitten > 2
    GROUP BY
      gr.t_ili_tid, gr.egris_egrid, gr.nummer, gr.bfs_nr, gr.gemeindename, gr.grundnutzung_typ_kt,
      gr.flaeche, gr.flaeche_bebaut, gr.flaeche_beschnitten, gr.flaeche_unbebaut, gr.geometrieart_liegenschaft, gr.geometrie
